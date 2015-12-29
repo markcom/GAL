@@ -1,0 +1,447 @@
+---
+title: "GAL - Barvení grafu"
+author: "Martin Kosík"
+date: "21. prosince 2015"
+output: html_document
+---
+
+##  Zadání
+
+Na různě hustých grafech prozkoumáme rozdíly v jednotlivých představených algoritmech barvení grafu, konkrétně nám půjde o algoritmy LF, Welsh-Powellův, RLF a DSATUR. N-krát (hodnota N bude upřesněna níže) provádějte následující cyklus.
+
+Zvolte počet vrcholů. Počet vrcholů volte náhodně mezi 90 a 110 (jinými slovy 100 vrcholů plus mínus 10 %). Pro zvolený počet vrcholů sestavte vždy čtyři grafy, pro každou dále uvedenou kategorii jeden. Každá kategorie je popsána číslem vyjadřujícím počet hran grafu, ovšem konkrétní počet hran konkrétního grafu volte náhodně s tolerancí tentokrát plus mínus 5 % okolo tohoto čísla (pro ujasnění bude následovat i příklad).
+
+| Název | Počet hran |
+|-----------|---------------------------|
+| Kategorie 1 | dvojnásobek počtu vrcholů |
+| Kategorie 2 | pětinásobek počtu vrcholů |
+| Kategorie 3 | 50 % maximálního počtu hran |
+| Kategorie 4 | 80 % maximálního počtu hran |
+
+*Tabulka 1: Počty hran jednotlivých kategorií*
+    
+Příklad. Bude (náhodně) zvoleno, že čtveřice grafů má mít 96 vrcholů. První graf tedy bude mít náhodně mezi 182 a 202 hranami, druhý graf mezi 456 a 504 hranami, třetí mezi 2166 a 2394 hranami a čtvrtý mezi 3466 a 3830 hranami (vizte též Tabulku 2).
+
+| Počet  vrcholů 	| 2x počet  vrcholů 	| 5x počet  vrcholů 	| maximální  počet hran 	| hran pro K1 	| hran pro K2 	| hran pro K3 	|  hran proK4 	|
+|----------------	|-------------------	|-------------------	|-----------------------	|-------------	|-------------	|-------------	|:-----------:	|
+| 96             	| 192               	| 480               	| 4560                  	| 182–202     	| 456–504     	| 2166–2394   	| 3466–3830   	|                     |
+
+*Tabulka 2: Rozmezí počtu hran jednotlivých kategorií pro graf o 96 vrcholech.*
+
+Každý z těchto čtyř grafů obarvěte všemi algoritmy a měřte, kolik barev který algoritmus spotřeboval, jak dlouho obarvení trvalo a zda byl graf souvislý.
+
+Číslo N volte tak, aby bylo v ideálním případě alespoň 100 (dle vlastní úvahy a celkové doby běhu programu je můžete i navýšit), pokud by při této volbě program běžel příliš dlouho, můžete je snížit, ale bylo by dobré, aby nebylo potřeba je snižovat pod hodnotu 50.
+
+Pro všechna barvení všech grafů počítejte následující statistiky.
+
+-   Minimum, maximum, průměr a medián počtu barev spotřebovaných daným algoritmem na danou kategorii grafů.
+-   Celkový čas daným algoritmem strávený barvením dané kategorie grafů.
+-   Četnost souvislých grafů pro jednotlivé kategorie grafů.
+-   Minimum, maximum, průměr a medián počtu vrcholů a hran grafů jednotlivých kategorií.
+
+Nezapomeňte svá řešení otestovat. Samozřejmostí by měly být přinejmenším testy ověřující, že algoritmy nacházejí nějaká korektní obarvení (k tomu není ani potřeba speciálních testovacích dat, lze využít napsaného generování náhodných grafů), můžete se zamyslet i nad konkrétními testovacími grafy, které by dokonce ověřily, že nalezená obarvení jsou skutečně ta, která by daný algoritmus nalézt měl.
+
+Naměřené výsledky shrňte referativní formou, čísla prezentujte pokud možno co nejpřehledněji (tabulkami či grafy, případně obojím).
+
+##  Inicializace
+
+V první fázi dojde k načtení potřebných knihoven a inicializaci hlavních proměných a dataframu pro výsledky měření
+
+```{r warning=FALSE, message=FALSE}
+options(width=90)
+options(digits.secs=6)
+
+library(igraph)
+library(ggplot2)
+
+set.seed(97)
+
+n <- 100    #   Mean of edges (edges <- +- 10%)
+runs <- 1000 #   Number of 
+f <- function(x) c(Min = min(x), Max = max(x), Mean = mean(x), Median = median(x)) #    Function used for aggregating the results
+
+results <- data.frame(runN = factor(),
+                      nVertices = integer(), 
+                      nEdges = integer(), 
+                      edgesCategory = factor(), 
+                      algorithm = factor(),
+                      nColors = integer(),
+                      runningTime = numeric(),
+                      components = integer())
+
+```
+
+##  Implementace algoritmů
+
+Pro R (S) bohužel není k dispozici knihovna, která by podporovala barvení grafů a výběr konkrétního algoritmu. Algoritmy jsem implementoval ručně. Jejich návrch na nižší úrovni by určitě umožnilo další optimalizaci a tím i zrychlení běhu.
+
+
+```{r}
+#   Naive Algorithm
+
+colorGraph.naive <- function(inputNeighbours) {
+    colorVector <- c(rep(0, length(neighbourList)))
+    for(i in 1:length(inputNeighbours)) {
+        minColor <- 1
+        while(minColor %in% colorVector[neighbourList[[i]]]){
+            minColor <- minColor + 1
+        }
+        colorVector[i] <- minColor
+    }
+    colorVector
+} 
+```
+
+
+```{r}
+#   Sort graph -> vector
+
+colorGraph.sort <- function(inputNeighbours) {
+    sortedByLength <- c(rep(0, length(neighbourList)))
+    nOfNeighbours <- sapply(neighbourList, length)
+    for (i in 1:length(inputNeighbours)) {
+        iMax <- which.max(nOfNeighbours)
+        sortedByLength[i] <- iMax
+        nOfNeighbours[iMax] <- -1
+    }
+    sortedByLength
+} 
+```
+
+```{r}
+#   Largest First
+
+colorGraph.LF <- function(inputNeighbours) {
+    sortedByLength <- colorGraph.sort(inputNeighbours)
+    colorVector <- c(rep(0, length(neighbourList)))
+    for(i in sortedByLength) {
+        minColor <- 1
+        while(minColor %in% colorVector[neighbourList[[i]]]){
+            minColor <- minColor + 1
+        }
+        colorVector[i] <- minColor
+    }
+    colorVector
+}  
+```
+
+```{r}
+#   Welsch - Powell
+
+colorGraph.WP <- function(inputNeighbours) {
+    sortedByLength <- colorGraph.sort(inputNeighbours)
+    colorVector <- c(rep(0, length(neighbourList)))
+    currentColor <- 1
+    while (min(colorVector) == 0) {
+        for(i in sortedByLength) {
+            if (colorVector[i] == 0 && !(currentColor %in% colorVector[neighbourList[[i]]])){
+            colorVector[i] <- currentColor
+            }
+        }
+        currentColor <- currentColor + 1
+    }
+    colorVector
+} 
+```
+
+```{r}
+#   Recursive Largest First 
+
+colorGraph.RLF <- function(inputNeighbours) {
+    colorVector <- c(rep(0, length(inputNeighbours)))
+    currentColor <- 0
+    nNeighbours <- sapply(inputNeighbours, length)
+    
+    while (min(colorVector) == 0) {
+        currentColor <- currentColor + 1
+        maxDegreeUncolored <- min(which(nNeighbours == max(nNeighbours[which(colorVector == 0)])))
+        colorVector[maxDegreeUncolored] <- currentColor
+        nNeighbours[maxDegreeUncolored] <- -1
+        nonNeighbours <- c(1:length(inputNeighbours))[-inputNeighbours[[maxDegreeUncolored]]]
+        allNonColored <- c(1:length(inputNeighbours))[which(colorVector == 0)]
+        nonColoredNonNeighbours <- intersect(nonNeighbours, allNonColored)
+        
+        while (length(nonColoredNonNeighbours) > 0) {
+            maxDegreeUncolored <- nonColoredNonNeighbours[which.max(sapply(inputNeighbours[nonColoredNonNeighbours],                                                function(x) length(x[colorVector[x] == 0])))]
+            colorVector[maxDegreeUncolored] <- currentColor
+            nNeighbours[maxDegreeUncolored] <- -1
+            if (length(inputNeighbours[[maxDegreeUncolored]]) == 0) {
+                nonNeighbours <- c(1:length(inputNeighbours))
+            }
+            else {
+                nonNeighbours <- c(1:length(inputNeighbours))[-inputNeighbours[[maxDegreeUncolored]]]
+            }
+            
+            allNonColored <- c(1:length(inputNeighbours))[which(colorVector == 0)]
+            newNCNN <- intersect(nonNeighbours, allNonColored)
+            nonColoredNonNeighbours <- intersect(nonColoredNonNeighbours, newNCNN)
+        }
+    }
+    colorVector
+} 
+```
+
+```{r}
+#   DSATUR
+
+colorGraph.DSATUR <- function(inputNeighbours) {
+    remainingVertives <- c(1:length(inputNeighbours))
+    colorVector <- c(rep(0, length(inputNeighbours)))
+    currentColor <- 1
+    nNeighbours <- sapply(inputNeighbours, length)
+    selectedVertice <- min(which(nNeighbours == max(nNeighbours)))
+    colorVector[selectedVertice] <- currentColor
+    remainingVertives <- remainingVertives[-which(remainingVertives == selectedVertice)]
+    
+    while (min(colorVector) == 0) {
+        maxNColors <- 0
+        selectedVertice <- 0
+        
+        for (i in remainingVertives) {
+            if (selectedVertice == 0) {
+                selectedVertice <- i
+                maxNColors <- length(unique(colorVector[inputNeighbours[[i]]]))
+            }
+            else if (maxNColors == length(unique(colorVector[inputNeighbours[[i]]]))){
+                if (nNeighbours[i] > nNeighbours[selectedVertice])  {
+                    selectedVertice <- i
+                    maxNColors <- length(unique(colorVector[inputNeighbours[[i]]]))
+                }
+                else if ((nNeighbours[i] == nNeighbours[selectedVertice]) && sample(c(TRUE,FALSE), 1)) {
+                    selectedVertice <- i
+                    maxNColors <- length(unique(colorVector[inputNeighbours[[i]]]))
+                }
+            }
+            else if (maxNColors < length(unique(colorVector[inputNeighbours[[i]]]))){
+                selectedVertice <- i
+                maxNColors <- length(unique(colorVector[inputNeighbours[[i]]]))
+            }
+        }
+        
+        i <-  0
+        while (colorVector[selectedVertice] == 0){
+            i <- i + 1
+            if (!any(colorVector[inputNeighbours[[selectedVertice]]] == i)) {
+                colorVector[selectedVertice] <- i
+            }
+        }
+        remainingVertives <- remainingVertives[-which(remainingVertives == selectedVertice)]
+    }
+    colorVector
+} 
+```
+
+Korektnost algoritmů jsem ověřoval ručně pro několik (na internetu nalezených) příkladech grafů malého stupně.
+
+##  Barvení grafů
+
+v této části je samotné měření, tj. vytvoření grafu, jeho obarvení, změření potřebného času ...
+
+```{r}
+for (runN in 1:runs){
+    for (edgesCategory in 1:4){
+        
+        nVertices = sample((n-.1*n):(n+.1*n),1)
+        maxEdges <- (nVertices * (nVertices-1) / 2)
+        nEdges <- switch(edgesCategory, nVertices*2, nVertices*5, round(maxEdges * .5), round(maxEdges * .8))
+
+#   Create Adjacency matrix
+        adMatrix <- matrix(0, ncol = nVertices, nrow = nVertices)
+        i <- 0
+        while (i < nEdges){
+            from <- sample(1:nVertices, 1)
+            to <- sample(1:nVertices, 1)
+            if (adMatrix[from,to] == 0 & from != to) {
+                adMatrix[from, to] <- 1
+                adMatrix[to, from] <- 1
+                i <- i+1
+            }
+        }
+
+#   edges
+        edges <- c()
+        for (i in 1:nVertices) {
+            for (j in i:nVertices){
+                if (adMatrix[i,j] == 1) edges <- c(edges, i , j)
+            }
+        }
+
+#   Create I-Graph
+        g<-graph(edges, n=max(edges), directed=FALSE)
+
+#   Neighbourhood from A matrix
+        neighbourList <- list()
+        for (i in 1:nVertices) {
+            tempRow <- vector(mode="numeric", length=0)
+            for (j in 1:nVertices) {
+                if (adMatrix[i,j] == 1) tempRow <- c(tempRow, j)
+            }
+            neighbourList[[i]] <- tempRow
+        }
+
+
+#   Number of components
+        components <- components(g)$no
+
+#   Run Naive
+        now <- Sys.time()
+        nColors <- max(colorGraph.naive(neighbourList))
+        result <- data.frame(runN = runN,
+                             nVertices = nVertices, 
+                             nEdges = nEdges, 
+                             edgesCategory = edgesCategory, 
+                             algorithm = "NAIVE", 
+                             nColors = nColors, 
+                             runningTime = as.numeric(Sys.time()-now), 
+                             components = components)
+        results <- rbind(results, result)
+
+#   Run Naive Largest First
+        now <- Sys.time()
+        nColors <- max(colorGraph.LF(neighbourList))
+        result <- data.frame(runN = runN,
+                             nVertices = nVertices, 
+                             nEdges = nEdges, 
+                             edgesCategory = edgesCategory, 
+                             algorithm = "LF", 
+                             nColors = nColors, 
+                             runningTime = as.numeric(Sys.time()-now), 
+                             components = components)
+        results <- rbind(results, result)
+
+#   Welsch - Powell
+        now <- Sys.time()
+        nColors <- max(colorGraph.WP(neighbourList))
+        result <- data.frame(runN = runN,
+                             nVertices = nVertices, 
+                             nEdges = nEdges, 
+                             edgesCategory = edgesCategory, 
+                             algorithm = "WP", 
+                             nColors = nColors, 
+                             runningTime = as.numeric(Sys.time()-now), 
+                             components = components)
+        results <- rbind(results, result)
+
+#   Recursive Largest First
+        now <- Sys.time()
+        nColors <- max(colorGraph.RLF(neighbourList))
+        result <- data.frame(runN = runN,
+                             nVertices = nVertices, 
+                             nEdges = nEdges, 
+                             edgesCategory = edgesCategory, 
+                             algorithm = "RLF", 
+                             nColors = nColors, 
+                             runningTime = as.numeric(Sys.time()-now), 
+                             components = components)
+        results <- rbind(results, result)
+
+#   Run DSATUR
+        now <- Sys.time()
+        nColors <- max(colorGraph.DSATUR(neighbourList))
+        result <- data.frame(runN = runN,
+                             nVertices = nVertices, 
+                             nEdges = nEdges, 
+                             edgesCategory = edgesCategory, 
+                             algorithm = "DSATUR", 
+                             nColors = nColors, 
+                             runningTime = as.numeric(Sys.time()-now), 
+                             components = components)
+        results <- rbind(results, result)
+    }
+}
+
+
+```
+
+Veškeré výledky měření jsou k dispozici v dataframu results.
+
+###  Ukázka obarveného grafu
+
+S použitím knihovny igraph je jednoduché i graficky znázornit obarvení. Zde jen pro ukázku poslední graf obarvený DSATUR.  `r nEdges` - celkové množství hran v daném grafu samozřejmě nepřispívá k přehlednosti.
+
+```{r}
+V(g)$color <- colorGraph.DSATUR(neighbourList)
+plot(g)
+```
+
+###  Výsledky
+
+####    Přehled počtu použitých barech pro konkrétní algoritmus a kategorii + graf
+```{r}
+aggregate(nColors~edgesCategory+algorithm, data=results, f)
+
+boxplot(nColors ~ edgesCategory, data = results, 
+	boxwex = 0.2, at = 1:4 - 0.4,
+	subset = algorithm == "NAIVE", col = 0,
+	main = "Porovnání jednotlivých algoritmů a kategorií - počet barev",
+	xlab = "Kategorie",
+	ylab = "Počet barev",
+	xlim = c(0.5, 4.5), ylim = c(0, max(results$nColors)+2), yaxs = "i")
+
+boxplot(nColors ~ edgesCategory, data = results, add = TRUE,
+	boxwex = 0.2, at = 1:4 - 0.2,
+	subset = algorithm == "LF", col = 5)
+
+boxplot(nColors ~ edgesCategory, data = results, add = TRUE,
+	boxwex = 0.2, at = 1:4,
+	subset = algorithm == "WP", col = 2)
+
+boxplot(nColors ~ edgesCategory, data = results, add = TRUE,
+	boxwex = 0.2, at = 1:4 + 0.2,
+	subset = algorithm == "RLF", col = 3)
+
+boxplot(nColors ~ edgesCategory, data = results, add = TRUE,
+	boxwex = 0.2, at = 1:4 + 0.4,
+	subset = algorithm == "DSATUR", col = 4)
+
+legend("bottomright", c("NAIVE", "LF", "WP", "RLF", "DSATUR"), fill = c(0,5,2,3,4), cex = .6)
+```
+
+####    Celkový čas potřebný k obarvení grafu dané kategorie pomocí uvedeného algoritmu
+
+```{r}
+timeAgg <- aggregate(runningTime~algorithm+edgesCategory, data=results, sum)
+timeAgg
+
+ggplot(data=timeAgg, aes(x=edgesCategory, y=runningTime)) +
+	geom_bar(aes(fill = algorithm), position = "dodge", stat="identity")+
+	ggtitle("Porovnání jednotlivých algoritmů a kategorií")
+```
+
+####    Četnost souvislých grafů
+Pro četnost souvislých grafů požívám knihovnu igraph, která má funkci pro zjištění počtu souvislých grafů (resp. počtu komponent)
+V našem případě to znamená počet hodnot, kde počet komponent je větší než 1 děleno počtem běhu programu (n)
+
+```{r}
+sG <- aggregate(components ~ edgesCategory, results[!duplicated(results[c(1,4)]),], function(x) sum(x==1) / runs)
+colnames(sG) <- c("komponenta", "četnost")
+sG
+```
+
+####    Jako poslední přehled počtu hran a vrcholů.
+Nejprve jak vypadá rozdělení počtu vrcholů, které nezávisí na kategorii
+
+```{r}
+table(results[!duplicated(results[1]),]$nVertices)
+hist(results[!duplicated(results[1]),]$nVertices, breaks = 100, col = "blue", main = "Přehled počtu vrcholů", xlab = "Počet vrchlů")
+
+```
+
+a následuje počet hran pro jednotlivé kategorie - závisí n počtu vrcholů
+
+```{r}
+
+ggplot(data=results[!duplicated(results[c(1,3)]),], aes(nEdges)) + 
+    geom_histogram(aes(fill = factor(edgesCategory)), binwidth = 15) + 
+    ggtitle("Frekvence počtu hran pro jednotlivé kategorie")
+```
+
+##  Závěr
+
+Naměřené hodnoty dobře ilustrují časovou náročnost i počet použitých barev. Výběr konkrétního algoritmu závisí na očekávaném výsledku (maximální rychlost, minimální počet barev ...) i vstupním grafu (počtu vrcholů a hran).
+
+##  Příloha - naměřené hodnoty
+
+```{r}
+results
+```
