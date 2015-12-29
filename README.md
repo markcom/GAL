@@ -1,5 +1,7 @@
 # GAL
-Repo for a graph algorith class.
+Repo for a graph algorith class on UC.
+
+
 R implementation of coloring algorithm + overview of running time / number of colors used
 
 algorithms:
